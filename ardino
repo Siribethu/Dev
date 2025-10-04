@@ -1,0 +1,102 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include "time.h"
+
+// 🟢 WiFi credentials
+const char* ssid     = "Siri";
+const char* password = "123456789";
+
+// 🕒 NTP server & timezone (India example)
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 19800; // GMT+5:30
+const int   daylightOffset_sec = 0;
+
+// ⏱️ Interval (2 seconds for testing)
+const unsigned long interval = 2000;
+unsigned long lastPrint = 0;
+
+// 🧭 Function to get formatted date-time (dd-mm-yyyy HH:MM:SS)
+String getDateTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return "00-00-0000 00:00:00";
+  }
+  char buffer[25];
+  // Use hyphens between day, month, year
+  strftime(buffer, sizeof(buffer), "%d-%m-%Y %H:%M:%S", &timeinfo);
+  return String(buffer);
+}
+
+// 📊 Generate exponential-like random float in range [minVal, maxVal]
+float randomExponential(float minVal, float maxVal) {
+  // Generate uniform random in (0,1)
+  float u = (float)esp_random() / (float)UINT32_MAX;
+  // Exponential bias (makes it less linear)
+  float biased = pow(u, 3); // change 3 → 2 or 4 to tweak randomness shape
+  // Map back to range
+  return minVal + (maxVal - minVal) * biased;
+}
+
+void setup() {
+  Serial.begin(9600);
+  delay(1000);  // small delay for stability
+
+  Serial.println("Initializing WiFi...");
+  WiFi.begin(ssid, password);
+
+  // 🔄 Connect WiFi
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // 🕒 Initialize NTP for time sync
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  Serial.println("⏳ Syncing time with NTP...");
+  delay(2000);
+
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    Serial.println("✅ Time synced successfully.");
+  } else {
+    Serial.println("⚠️  Failed to obtain time.");
+  }
+
+  Serial.println("=============================================");
+  Serial.println("DateTime, Temperature(°C), Min(°C), Status");
+  Serial.println("=============================================");
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - lastPrint >= interval || lastPrint == 0) {
+    lastPrint = currentMillis;
+
+    // Generate random simulated temperature
+    float value = randomExponential(-40.0, 28.0);
+
+    // Print in CSV format: dd-mm-yyyy HH:MM:SS,temperature,...
+    Serial.print(getDateTime());
+    Serial.print(",");
+    Serial.print(value, 2);   // 2 decimal places
+    Serial.print(",-40,");
+    if (value > -35.0) {
+      Serial.println("HIGH TEMP");
+    } else {
+      Serial.println("NO ALARMS");
+    }
+  }
+
+  // Optional: echo any incoming serial from PC
+  if (Serial.available()) {
+    String input = Serial.readString();
+    Serial.print("Received from PC: ");
+    Serial.println(input);
+  }
+}
+
+ 
