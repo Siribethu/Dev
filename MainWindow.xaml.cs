@@ -6,6 +6,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -15,24 +16,66 @@ namespace DatalogToolMarken
     {
         private SerialPort serialPort;
         private ObservableCollection<DataRecord> dataRecords = new ObservableCollection<DataRecord>();
+        private DispatcherTimer usbTimer;
 
         public MainWindow()
         {
             InitializeComponent();
-            dataGridCsv.ItemsSource = dataRecords;
             RefreshPorts();
+            StartUsbWatcher();
         }
 
-        // 🔹 Refresh COM Ports (only active ports)
+        // ✅ USB Auto-Detection Watcher
+        private void StartUsbWatcher()
+        {
+            usbTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(3)
+            };
+            usbTimer.Tick += UsbTimer_Tick;
+            usbTimer.Start();
+        }
+
+        private void UsbTimer_Tick(object sender, EventArgs e)
+        {
+            RefreshPorts();
+            bool usbFound = false;
+
+            foreach (DriveInfo drive in DriveInfo.GetDrives())
+            {
+                if (drive.DriveType == DriveType.Removable && drive.IsReady)
+                {
+                    textBlockUsbPath.Text = $"USB Detected: {drive.RootDirectory.FullName}";
+                    usbFound = true;
+                    break;
+                }
+            }
+
+            if (!usbFound)
+                textBlockUsbPath.Text = "No USB detected";
+        }
+
+        // ✅ Refresh COM Ports
         private void RefreshPorts()
         {
             comboBoxPorts.Items.Clear();
             string[] ports = SerialPort.GetPortNames();
 
             foreach (var port in ports)
-                comboBoxPorts.Items.Add(port);
+            {
+                try
+                {
+                    using (SerialPort sp = new SerialPort(port))
+                    {
+                        sp.Open();
+                        comboBoxPorts.Items.Add(port);
+                        sp.Close();
+                    }
+                }
+                catch { }
+            }
 
-            if (ports.Length > 0)
+            if (comboBoxPorts.Items.Count > 0)
                 comboBoxPorts.SelectedIndex = 0;
             else
                 textBlockStatus.Text = "No active COM ports found.";
@@ -43,7 +86,6 @@ namespace DatalogToolMarken
             RefreshPorts();
         }
 
-        // 🔹 Serial Connect / Disconnect
         private void buttonSerial_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -61,19 +103,19 @@ namespace DatalogToolMarken
                     serialPort.DataReceived += SerialPort_DataReceived;
                     serialPort.Open();
 
-                    textBlockStatus.Text = "Connecting...";
                     buttonSerial.Content = "Connecting...";
+                    textBlockStatus.Text = $"Connecting to {selectedPort}...";
 
                     Dispatcher.InvokeAsync(() =>
                     {
-                        textBlockStatus.Text = $"Connected to {selectedPort}";
                         buttonSerial.Content = "Connected";
+                        textBlockStatus.Text = $"Connected to {selectedPort}";
                     });
                 }
                 else
                 {
                     serialPort.Close();
-                    buttonSerial.Content = "Open Serial";
+                    buttonSerial.Content = "Connect";
                     textBlockStatus.Text = "Disconnected";
                 }
             }
@@ -83,7 +125,6 @@ namespace DatalogToolMarken
             }
         }
 
-        // 🔹 Serial Data Received from ESP32
         private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
             try
@@ -92,7 +133,6 @@ namespace DatalogToolMarken
                 Dispatcher.Invoke(() =>
                 {
                     string[] parts = line.Split(',');
-
                     if (parts.Length >= 4)
                     {
                         dataRecords.Add(new DataRecord
@@ -105,23 +145,42 @@ namespace DatalogToolMarken
                     }
                 });
             }
-            catch (Exception) { }
+            catch { }
         }
 
-        // 🔹 Download Button
         private void buttonDownload_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Downloading data from ESP32...");
+            if (serialPort == null || !serialPort.IsOpen)
+            {
+                MessageBox.Show("Please connect to the COM port first!");
+                return;
+            }
+
+            try
+            {
+                // Send a request to the Arduino to send data
+                serialPort.WriteLine("GET_DATA"); // Make sure Arduino code listens for this command
+
+                // Optionally, inform the user
+                textBlockStatus.Text = "Downloading data from ESP32...";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error while downloading: " + ex.Message);
+            }
         }
 
-        // 🔹 Save CSV
-        private void SaveCSV_Click(object sender, RoutedEventArgs e)
-        {
-            SaveFileDialog dlg = new SaveFileDialog
-            {
-                Filter = "CSV Files (*.csv)|*.csv"
-            };
 
+        private void buttonGraph_Click(object sender, RoutedEventArgs e)
+        {
+            var graphPage = new GraphPage(dataRecords.ToList());
+            MainFrame.Navigate(graphPage);
+        }
+
+
+        private void buttonSaveCsv_Click(object sender, RoutedEventArgs e)
+        {
+            SaveFileDialog dlg = new SaveFileDialog { Filter = "CSV Files (*.csv)|*.csv" };
             if (dlg.ShowDialog() == true)
             {
                 using (StreamWriter writer = new StreamWriter(dlg.FileName))
@@ -134,14 +193,37 @@ namespace DatalogToolMarken
             }
         }
 
-        // 🔹 Save Excel
-        private void SaveExcel_Click(object sender, RoutedEventArgs e)
+        private void buttonSavePdf_Click(object sender, RoutedEventArgs e)
         {
-            SaveFileDialog dlg = new SaveFileDialog
+            SaveFileDialog dlg = new SaveFileDialog { Filter = "PDF Files (*.pdf)|*.pdf" };
+            if (dlg.ShowDialog() == true)
             {
-                Filter = "Excel Files (*.xlsx)|*.xlsx"
-            };
+                PdfDocument pdf = new PdfDocument();
+                PdfPage page = pdf.AddPage();
+                XGraphics gfx = XGraphics.FromPdfPage(page);
+                XFont font = new XFont("Arial", 10);
+                XFont headerFont = new XFont("Arial", 14, XFontStyleEx.Bold); // fixed for .NET 8
 
+                double y = 40;
+                gfx.DrawString("Datalog Export", headerFont, XBrushes.Black,
+                    new XRect(0, y, page.Width, 20), XStringFormats.TopCenter);
+                y += 40;
+
+                foreach (var record in dataRecords)
+                {
+                    gfx.DrawString($"{record.DateTime} | {record.Temperature} | {record.MinTemp} | {record.Status}",
+                        font, XBrushes.Black, new XPoint(50, y));
+                    y += 20;
+                }
+
+                pdf.Save(dlg.FileName);
+                MessageBox.Show("PDF file saved successfully!");
+            }
+        }
+
+        private void buttonSaveExcel_Click(object sender, RoutedEventArgs e)
+        {
+            SaveFileDialog dlg = new SaveFileDialog { Filter = "Excel Files (*.xlsx)|*.xlsx" };
             if (dlg.ShowDialog() == true)
             {
                 var wb = new XLWorkbook();
@@ -167,70 +249,7 @@ namespace DatalogToolMarken
             }
         }
 
-        
-        // 🔹 Save PDF (Updated for PDFsharp 6.x)
-        private void SavePDF_Click(object sender, RoutedEventArgs e)
-        {
-            SaveFileDialog dlg = new SaveFileDialog
-            {
-                Filter = "PDF Files (*.pdf)|*.pdf"
-            };
-
-            if (dlg.ShowDialog() == true)
-            {
-                try
-                {
-                    PdfDocument pdf = new PdfDocument();
-                    pdf.Info.Title = "Datalog Export";
-
-                    PdfPage page = pdf.AddPage();
-                    XGraphics gfx = XGraphics.FromPdfPage(page);
-
-                    // ✅ Use XFontStyleEx instead of XFontStyle
-                    XFont titleFont = new XFont("Arial", 14, XFontStyleEx.Bold);
-                    XFont textFont = new XFont("Arial", 10, XFontStyleEx.Regular);
-
-                    // ✅ Use XUnit.FromPoint instead of implicit int/double conversions
-                    gfx.DrawString("Datalog Export", titleFont, XBrushes.Black,
-                        new XRect(XUnit.FromPoint(0), XUnit.FromPoint(20),
-                                  page.Width, XUnit.FromPoint(40)),
-                        XStringFormats.TopCenter);
-
-                    double y = 70;
-                    gfx.DrawString("Date/Time            Temp (°C)     MinTemp     Status",
-                        textFont, XBrushes.Black, new XPoint(XUnit.FromPoint(40), XUnit.FromPoint(y)));
-                    y += 20;
-                    gfx.DrawLine(XPens.Black, XUnit.FromPoint(40), XUnit.FromPoint(y),
-                                 page.Width - XUnit.FromPoint(40), XUnit.FromPoint(y));
-                    y += 20;
-
-                    foreach (var record in dataRecords)
-                    {
-                        gfx.DrawString($"{record.DateTime,-20}  {record.Temperature,-10}  {record.MinTemp,-10}  {record.Status}",
-                            textFont, XBrushes.Black, new XPoint(XUnit.FromPoint(40), XUnit.FromPoint(y)));
-                        y += 20;
-
-                        // Add new page if nearing bottom
-                        if (y > page.Height.Point - 40)
-                        {
-                            page = pdf.AddPage();
-                            gfx = XGraphics.FromPdfPage(page);
-                            y = 40;
-                        }
-                    }
-
-                    pdf.Save(dlg.FileName);
-                    MessageBox.Show("PDF file saved successfully!");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Error saving PDF: " + ex.Message);
-                }
-            }
-        }
-
-        // 🔹 Submit Button
-        private void Submit_Click(object sender, RoutedEventArgs e)
+        private void buttonSubmit_Click(object sender, RoutedEventArgs e)
         {
             MessageBox.Show("Data submitted successfully!");
         }
