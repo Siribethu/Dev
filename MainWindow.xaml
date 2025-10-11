@@ -1,46 +1,70 @@
 <Window x:Class="DatalogToolMarken.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Datalog Tool Marken" Height="600" Width="900">
+        xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
+        Title="Datalog Tool Marken" Height="600" Width="870"
+        Background="#F8F9FA">
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <!-- Header -->
+            <RowDefinition Height="Auto"/>
             <!-- Top Controls -->
             <RowDefinition Height="*"/>
-            <!-- DataGrid -->
+            <!-- Main Content -->
             <RowDefinition Height="Auto"/>
-            <!-- Bottom Controls -->
+            <!-- Bottom Buttons -->
             <RowDefinition Height="Auto"/>
-            <!-- StatusBar -->
+            <!-- Status Bar -->
         </Grid.RowDefinitions>
 
+        <!-- ✅ HEADER with LOGO and TITLE -->
+        <DockPanel Grid.Row="0" Background="#E6E8EF" Height="60" LastChildFill="True" Margin="0,0,0,5">
+            <Image Source="WithTagAi.png"
+                   Height="45"
+                   Width="150"
+                   Stretch="Uniform"
+                   VerticalAlignment="Center"
+                   Margin="15,5,10,5"
+                   DockPanel.Dock="Left"/>
+
+            <TextBlock Text="Datalog Tool Marken"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       Foreground="#2E2E7A"
+                       VerticalAlignment="Center"
+                       Margin="5,0,0,0"/>
+        </DockPanel>
+
         <!-- 🔹 Top Controls -->
-        <StackPanel Orientation="Horizontal" Margin="10" Grid.Row="0" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="10" VerticalAlignment="Center">
             <ComboBox x:Name="comboBoxPorts" Width="150" Margin="5"/>
             <Button x:Name="buttonRefreshPorts" Content="Refresh Ports" Width="110" Margin="5" Click="buttonRefreshPorts_Click"/>
             <Button x:Name="buttonSerial" Content="Connect" Width="110" Margin="5" Click="buttonSerial_Click"/>
             <DatePicker x:Name="datePicker" Width="140" Margin="5"/>
             <Button x:Name="buttonDownload" Content="Download Data" Width="120" Margin="5" Click="buttonDownload_Click"/>
+            <Button x:Name="buttonGraph" Content="Graph" Width="90" Margin="5" Click="buttonGraph_Click"/>
         </StackPanel>
 
-        <!-- 🔹 DataGrid -->
-        <DataGrid x:Name="dataGridCsv" Grid.Row="1" Margin="10" AutoGenerateColumns="True" IsReadOnly="True" />
+        <!-- 🔹 Main Content Frame -->
+        <Frame x:Name="MainFrame" Grid.Row="2" Margin="10" />
 
-        <!-- 🔹 Bottom Controls -->
-        <StackPanel Orientation="Horizontal" Grid.Row="2" HorizontalAlignment="Center" Margin="10">
-            <Button x:Name="buttonSaveCsv" Content="Save CSV" Width="90" Margin="5" Click="SaveCSV_Click"/>
-            <Button x:Name="buttonSavePdf" Content="Save PDF" Width="90" Margin="5" Click="SavePDF_Click"/>
-            <Button x:Name="buttonSaveExcel" Content="Save Excel" Width="90" Margin="5" Click="SaveExcel_Click"/>
-            <Button x:Name="buttonSubmit" Content="Submit" Width="90" Margin="5" Click="Submit_Click"/>
+        <!-- 🔹 Bottom Buttons -->
+        <StackPanel Orientation="Horizontal" Grid.Row="3" HorizontalAlignment="Center" Margin="10">
+            <Button x:Name="buttonSaveCsv" Content="Save CSV" Width="90" Margin="5" Click="buttonSaveCsv_Click"/>
+            <Button x:Name="buttonSavePdf" Content="Save PDF" Width="90" Margin="5" Click="buttonSavePdf_Click"/>
+            <Button x:Name="buttonSaveExcel" Content="Save Excel" Width="90" Margin="5" Click="buttonSaveExcel_Click"/>
+            <Button x:Name="buttonSubmit" Content="Submit" Width="90" Margin="5" Click="buttonSubmit_Click"/>
         </StackPanel>
 
         <!-- 🔹 Status Bar -->
-        <StatusBar Grid.Row="3" Margin="5">
+        <StatusBar Grid.Row="4" Margin="5" Background="#E6E8EF">
             <StatusBarItem>
-                <TextBlock x:Name="textBlockStatus" Text="Ready" />
+                <TextBlock x:Name="textBlockStatus" Text="Ready" Foreground="#2E2E7A" />
             </StatusBarItem>
             <StatusBarItem>
-                <TextBlock x:Name="textBlockUsbPath" Text="No USB detected" />
+                <TextBlock x:Name="textBlockUsbPath" Text="No USB detected" Foreground="#2E2E7A" />
             </StatusBarItem>
         </StatusBar>
     </Grid>
